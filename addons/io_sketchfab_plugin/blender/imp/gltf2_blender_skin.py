@@ -40,8 +40,8 @@ class BlenderSkin():
         else:
             name = "Armature_" + str(skin_id)
 
-        armature = bpy.data.armatures.new(name)
-        obj = bpy.data.objects.new(name, armature)
+        armature = bpy.data.armatures.new(name=name)
+        obj = bpy.data.objects.new(name=name, object_data=armature)
 
         if bpy.app.version == (2, 79, 0):
             Version.link(gltf.blender_scene, obj)
@@ -115,8 +115,8 @@ class BlenderSkin():
         scene = bpy.data.scenes[gltf.blender_scene]
         obj   = bpy.data.objects[pyskin.blender_armature_name]
 
-        bpy.context.screen.scene = scene
-        scene.objects.active = obj
+        Version.set_scene(scene)
+        Version.set_active_object(obj)
         bpy.ops.object.mode_set(mode="EDIT")
 
         if pynode.name:
@@ -124,7 +124,7 @@ class BlenderSkin():
         else:
             name = "Bone_" + str(node_id)
 
-        bone = obj.data.edit_bones.new(name)
+        bone = obj.data.edit_bones.new(name=name)
         pynode.blender_bone_name = bone.name
         pynode.blender_armature_name = pyskin.blender_armature_name
         bone.tail = Vector((0.0,1.0,0.0)) # Needed to keep bone alive
@@ -139,7 +139,7 @@ class BlenderSkin():
         for node_id in pyskin.node_ids:
             obj = bpy.data.objects[gltf.data.nodes[node_id].blender_object]
             for bone in pyskin.joints:
-                obj.vertex_groups.new(gltf.data.nodes[bone].blender_bone_name)
+                obj.vertex_groups.new(name=gltf.data.nodes[bone].blender_bone_name)
 
     @staticmethod
     def assign_vertex_groups(gltf, skin_id):

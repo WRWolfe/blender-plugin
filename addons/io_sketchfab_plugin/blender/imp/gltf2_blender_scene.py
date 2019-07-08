@@ -91,8 +91,8 @@ class BlenderScene():
 
 
         # Parent root node to rotation object
-        if bpy.app.version == (2, 79, 0):
-            Version.link(gltf.blender_scene, obj_rotation)
+        #if bpy.app.version == (2, 79, 0):
+        Version.link(gltf.blender_scene, obj_rotation)
 
         for node_idx in pyscene.nodes:
             bpy.data.objects[gltf.data.nodes[node_idx].blender_object].parent = obj_rotation
@@ -102,4 +102,5 @@ class BlenderScene():
 
         # Make object selected to allow to transform it directly after import
         bpy.ops.object.select_all(action='DESELECT')
-        Version.select(obj_rotation)
+        for o in obj_rotation.children:
+            Version.select(o)

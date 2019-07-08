@@ -32,7 +32,7 @@ class BlenderKHR_materials_pbrSpecularGlossiness():
     @staticmethod
     def create(gltf, pbrSG, mat_name, vertex_color):
         engine = bpy.context.scene.render.engine
-        if engine == Version.Engine:
+        if engine == Version.ENGINE:
             BlenderKHR_materials_pbrSpecularGlossiness.create_cycles(gltf, pbrSG, mat_name, vertex_color)
         else:
             pass #TODO for internal / Eevee in future 2.8
@@ -235,14 +235,14 @@ class BlenderKHR_materials_pbrSpecularGlossiness():
 
                 node_tree.links.new(separate.inputs[0], text_node.outputs[0])
 
-                node_tree.links.new(principled.inputs[0], combine.outputs[0])
-
                 node_tree.links.new(math_vc_R.inputs[0], separate.outputs[0])
                 node_tree.links.new(math_vc_G.inputs[0], separate.outputs[1])
                 node_tree.links.new(math_vc_B.inputs[0], separate.outputs[2])
 
             else:
-                node_tree.links.new(diffuse.inputs[0], text_node.outputs[0])
+                pass
+
+            node_tree.links.new(diffuse.inputs[0], text_node.outputs[0])
 
             # Common for both mode (non vertex color / vertex color)
 

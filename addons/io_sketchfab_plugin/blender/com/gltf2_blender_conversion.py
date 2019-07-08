@@ -21,6 +21,7 @@
  """
 
 from mathutils import Matrix, Vector, Quaternion
+from math import cos, sin, sqrt
 
 class Conversion():
 

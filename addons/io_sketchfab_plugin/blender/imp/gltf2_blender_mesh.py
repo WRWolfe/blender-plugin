@@ -153,6 +153,9 @@ class BlenderMesh():
                         vert_idx = mesh.loops[loop_idx].vertex_index
                         if vert_idx in range(offset, offset + prim.vertices_length):
                             cpt_idx = vert_idx - offset
-                            vertex_color.data[loop_idx].color = tuple(list(color_data[cpt_idx][0:3]) + [1.0])
-                            #TODO : no alpha in vertex color
+                            if bpy.app.version < (2, 80, 0):
+                                vertex_color.data[loop_idx].color = tuple(list(color_data[cpt_idx][0:3]))
+                            else:
+                                vertex_color.data[loop_idx].color = tuple(list(color_data[cpt_idx][0:3]) + [1.0])
+                                
             offset = offset + prim.vertices_length

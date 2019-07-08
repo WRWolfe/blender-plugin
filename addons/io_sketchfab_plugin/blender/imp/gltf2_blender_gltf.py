@@ -83,10 +83,6 @@ class BlenderGlTF():
 
         # Restore selection and active object
         bpy.ops.object.select_all(action='DESELECT')
-
-        for obj in selected_objects:
-            Version.select(obj)
-
         Version.set_active_object(active_object)
 
     @staticmethod
