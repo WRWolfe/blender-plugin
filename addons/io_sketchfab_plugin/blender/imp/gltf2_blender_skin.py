@@ -26,6 +26,8 @@ from mathutils import Vector, Matrix, Quaternion
 from ..com.gltf2_blender_conversion import *
 from ...io.imp.gltf2_io_binary import *
 
+from ..blender_version import Version
+
 class BlenderSkin():
 
     @staticmethod
@@ -40,7 +42,12 @@ class BlenderSkin():
 
         armature = bpy.data.armatures.new(name)
         obj = bpy.data.objects.new(name, armature)
-        bpy.data.scenes[gltf.blender_scene].objects.link(obj)
+
+        if bpy.app.version == (2, 79, 0):
+            Version.link(gltf.blender_scene, obj)
+        else:
+            bpy.context.scene.collection.children[-1].objects.link(obj)
+
         pyskin.blender_armature_name = obj.name
         if parent is not None:
             obj.parent = bpy.data.objects[gltf.data.nodes[parent].blender_object]
@@ -88,16 +95,16 @@ class BlenderSkin():
 
             # Get armature space location (bindpose + pose)
             # Then, remove original bind location from armspace location, and bind rotation
-            final_location = (bind_location.inverted() * parent_mat * Matrix.Translation(location)).to_translation()
-            obj.pose.bones[pynode.blender_bone_name].location = bind_rotation.inverted().to_matrix().to_4x4() * final_location
+            final_location = ( Version.mat_mult( Version.mat_mult(bind_location.inverted(), parent_mat), Matrix.Translation(location)) ).to_translation()
+            obj.pose.bones[pynode.blender_bone_name].location = Version.mat_mult(bind_rotation.inverted().to_matrix().to_4x4(), final_location)
 
             # Do the same for rotation
-            obj.pose.bones[pynode.blender_bone_name].rotation_quaternion = (bind_rotation.to_matrix().to_4x4().inverted() * parent_mat * rotation.to_matrix().to_4x4()).to_quaternion()
-            obj.pose.bones[pynode.blender_bone_name].scale = (bind_scale.inverted() * parent_mat * Conversion.scale_to_matrix(scale)).to_scale()
+            obj.pose.bones[pynode.blender_bone_name].rotation_quaternion = ( Version.mat_mult( Version.mat_mult(bind_rotation.to_matrix().to_4x4().inverted(), parent_mat), rotation.to_matrix().to_4x4()) ).to_quaternion()
+            obj.pose.bones[pynode.blender_bone_name].scale = ( Version.mat_mult( Version.mat_mult(bind_scale.inverted(),parent_mat), Conversion.scale_to_matrix(scale)) ).to_scale()
         else:
-            obj.pose.bones[pynode.blender_bone_name].location = bind_location.inverted() * location
-            obj.pose.bones[pynode.blender_bone_name].rotation_quaternion = bind_rotation.inverted() * rotation
-            obj.pose.bones[pynode.blender_bone_name].scale = bind_scale.inverted() * scale
+            obj.pose.bones[pynode.blender_bone_name].location = Version.mat_mult(bind_location.inverted(), location)
+            obj.pose.bones[pynode.blender_bone_name].rotation_quaternion = Version.mat_mult(bind_rotation.inverted(), rotation)
+            obj.pose.bones[pynode.blender_bone_name].scale = Version.mat_mult(bind_scale.inverted(), scale)
 
     @staticmethod
     def create_bone(gltf, skin_id, node_id, parent):
@@ -190,9 +197,9 @@ class BlenderSkin():
             obj = bpy.data.objects[node.blender_object]
 
             for obj_sel in bpy.context.scene.objects:
-                obj_sel.select = False
-            obj.select = True
-            bpy.context.scene.objects.active = obj
+                Version.deselect(obj_sel)
+            Version.select(obj)
+            Version.set_active_object(obj)
 
             #bpy.ops.object.parent_clear(type='CLEAR_KEEP_TRANSFORM')
             #obj.parent = bpy.data.objects[pyskin.blender_armature_name]
