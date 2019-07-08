@@ -1,4 +1,4 @@
-# Copyright (c) 2017 The Khronos Group Inc.
+# Copyright 2018-2019 The glTF-Blender-IO authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,77 +13,60 @@
 # limitations under the License.
 
 import bpy
-import functools
 
-from io_scene_gltf2.io.com import gltf2_io
-from io_scene_gltf2.blender.exp import gltf2_blender_gather_nodes
-from io_scene_gltf2.blender.exp import gltf2_blender_gather_animations
+from ...io.com import gltf2_io
+from . import gltf2_blender_gather_nodes
+from . import gltf2_blender_gather_animations
+from .gltf2_blender_gather_cache import cached
+from . import gltf2_blender_generate_extras
+from . import gltf2_blender_export_keys
 
 
-def cached(func):
+def gather_gltf2(export_settings):
     """
-    Decorator to cache gather functions results. The gather function is only executed if its result isn't in the cache yet
-    :param func: the function to be decorated. It will have a static __cache member afterwards
-    :return:
-    """
-    @functools.wraps(func)
-    def wrapper_cached(*args, **kwargs):
-        assert len(args) == 2 and len(kwargs) == 0, "Wrong signature for cached function"
-        blender_obj, export_settings = args
-        # invalidate cache if export settings have changed
-        if export_settings != func.__export_settings:
-            func.__cache = {}
-            func.__export_settings = export_settings
-        # use or fill cache
-        if blender_obj in func.__cache:
-            return func.__cache[blender_obj]
-        else:
-            result = func(*args)
-            func.__cache[blender_obj] = result
-            return result
-    return wrapper_cached
+    Gather glTF properties from the current state of blender.
 
-
-def gather_gltf2(operator, context, export_settings):
-    """
-    Gather glTF properties from the current state of blender
-    :param operator: blender operator
-    :param context: blender context
     :return: list of scene graphs to be added to the glTF export
     """
     scenes = []
     animations = []  # unfortunately animations in gltf2 are just as 'root' as scenes.
     for blender_scene in bpy.data.scenes:
         scenes.append(__gather_scene(blender_scene, export_settings))
-        animations += __gather_animations(blender_scene, export_settings)
+        if export_settings[gltf2_blender_export_keys.ANIMATIONS]:
+            animations += __gather_animations(blender_scene, export_settings)
 
-    return scenes
+    return scenes, animations
 
 
 @cached
 def __gather_scene(blender_scene, export_settings):
     scene = gltf2_io.Scene(
         extensions=None,
-        extras=None,
+        extras=__gather_extras(blender_scene, export_settings),
         name=blender_scene.name,
         nodes=[]
     )
 
     for blender_object in blender_scene.objects:
         if blender_object.parent is None:
-            node = gltf2_blender_gather_nodes.gather_node(blender_object, export_settings)
+            node = gltf2_blender_gather_nodes.gather_node(blender_object, blender_scene, export_settings)
             if node is not None:
                 scene.nodes.append(node)
-
-    # TODO: materials, textures, images
-    # TODO: animations
-    # TODO: lights
-     # TODO: asset?
 
     return scene
 
 
-@cached
 def __gather_animations(blender_scene, export_settings):
+    animations = []
     for blender_object in blender_scene.objects:
-        return gltf2_blender_gather_animations.gather_animations(blender_object, export_settings)
+        # First check if this object is exported or not. Do not export animation of not exported object
+        obj_node = gltf2_blender_gather_nodes.gather_node(blender_object, blender_scene, export_settings)
+        if obj_node is not None:
+            animations += gltf2_blender_gather_animations.gather_animations(blender_object, export_settings)
+    return animations
+
+
+def __gather_extras(blender_object, export_settings):
+    if export_settings[gltf2_blender_export_keys.EXTRAS]:
+        return gltf2_blender_generate_extras.generate_extras(blender_object)
+    return None

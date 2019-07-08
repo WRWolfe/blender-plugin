@@ -48,3 +48,44 @@ class Conversion():
             mat[i][i] = scale[i]
 
         return mat
+
+
+def correction_rotation():
+    """Correction of Rotation."""
+    # Correction is needed for lamps, because Yup2Zup is not written in vertices
+    # and lamps has no vertices :)
+    return Quaternion((sqrt(2)/2, -sqrt(2)/2, 0.0, 0.0)).to_matrix().to_4x4()
+
+def texture_transform_blender_to_gltf(mapping_transform):
+    """
+    Converts the offset/rotation/scale from a Mapping node applied in Blender's
+    UV space to the equivalent KHR_texture_transform.
+    """
+    offset = mapping_transform.get('offset', [0, 0])
+    rotation = mapping_transform.get('rotation', 0)
+    scale = mapping_transform.get('scale', [1, 1])
+    return {
+        'offset': [
+            offset[0] - scale[1] * sin(rotation),
+            1 - offset[1] - scale[1] * cos(rotation),
+        ],
+        'rotation': rotation,
+        'scale': [scale[0], scale[1]],
+    }
+
+def texture_transform_gltf_to_blender(texture_transform):
+    """
+    Converts a KHR_texture_transform into the equivalent offset/rotation/scale
+    for a Mapping node applied in Blender's UV space.
+    """
+    offset = texture_transform.get('offset', [0, 0])
+    rotation = texture_transform.get('rotation', 0)
+    scale = texture_transform.get('scale', [1, 1])
+    return {
+        'offset': [
+            offset[0] + scale[1] * sin(rotation),
+            1 - offset[1] - scale[1] * cos(rotation),
+        ],
+        'rotation': rotation,
+        'scale': [scale[0], scale[1]],
+    }

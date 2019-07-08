@@ -1,4 +1,4 @@
-# Copyright (c) 2017 The Khronos Group Inc.
+# Copyright 2018-2019 The glTF-Blender-IO authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,130 +11,146 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-#
-# Imports
-#
+import time
 
 import bpy
+import sys
+import traceback
 
-from ...io.exp.gltf2_io_export import *
-from ...io.com.gltf2_io import Gltf
+from ...blender.com import gltf2_blender_json
+from . import gltf2_blender_export_keys
+from . import gltf2_blender_gather
+from .gltf2_blender_gltf2_exporter import GlTF2Exporter
+from ...io.com.gltf2_io_debug import print_console, print_newline
+from ...io.exp import gltf2_io_export
+from ...io.exp import gltf2_io_draco_compression_extension
 
-from .gltf2_blender_generate import *
-from  io_scene_gltf2.blender.com import gltf2_blender_json
 
-#
-# Globals
-#
-
-#
-# Functions
-#
-
-def prepare(export_settings):
-    """
-    Stores current state of Blender and prepares for export, depending on the current export settings.
-    """
-    if bpy.context.active_object is not None and bpy.context.active_object.mode != 'OBJECT':
+def save(context, export_settings):
+    """Start the glTF 2.0 export and saves to content either to a .gltf or .glb file."""
+    if bpy.context.active_object is not None:
         bpy.ops.object.mode_set(mode='OBJECT')
-    
-    filter_apply(export_settings)
-    
-    export_settings['gltf_original_frame'] = bpy.context.scene.frame_current 
-    
-    export_settings['gltf_use_no_color'] = []
-    
-    export_settings['gltf_joint_cache'] = {}
-    
+
+    original_frame = bpy.context.scene.frame_current
     if not export_settings['gltf_current_frame']:
         bpy.context.scene.frame_set(0)
 
-    
-def finish(export_settings):
-    """
-    Brings back Blender into its original state before export and cleans up temporary objects.
-    """
-    if export_settings['temporary_meshes'] is not None:
-        for temporary_mesh in export_settings['temporary_meshes']:
-            bpy.data.meshes.remove(temporary_mesh)
-            
-    bpy.context.scene.frame_set(export_settings['gltf_original_frame'])  
+    __notify_start(context)
+    start_time = time.time()
+    json, buffer = __export(export_settings)
+    __write_file(json, buffer, export_settings)
 
+    end_time = time.time()
+    __notify_end(context, end_time - start_time)
 
-def save(operator,
-         context,
-         export_settings):
-    """
-    Starts the glTF 2.0 export and saves to content either to a .gltf or .glb file.
-    """
-
-    print_console('INFO', 'Starting glTF 2.0 export')
-    bpy.context.window_manager.progress_begin(0, 100)
-    bpy.context.window_manager.progress_update(0)
-    
-    #
-    
-    prepare(export_settings)
-    
-    #
-
-    glTF = Gltf(
-        accessors=[],
-        animations=[],
-        asset=None,
-        buffers=[],
-        buffer_views=[],
-        cameras=[],
-        extensions={},
-        extensions_required=[],
-        extensions_used=[],
-        extras=None,
-        images=[],
-        materials=[],
-        meshes=[],
-        nodes=[],
-        samplers=[],
-        scene=-1,
-        scenes=[],
-        skins=[],
-        textures=[]
-    )
-
-    generate_glTF(operator, context, export_settings, glTF)
-
-    #
-
-    def dict_strip(obj):
-        o = obj
-        if isinstance(obj, dict):
-            o = {}
-            for k, v in obj.items():
-                if v is None:
-                    continue
-                elif isinstance(v, list) and len(v) == 0:
-                    continue
-                o[k] = dict_strip(v)
-        elif isinstance(obj, list):
-            o = []
-            for v in obj:
-                o.append(dict_strip(v))
-        elif isinstance(obj, float):
-            # force floats to int, if they are integers (prevent INTEGER_WRITTEN_AS_FLOAT validator warnings)
-            if int(obj) == obj:
-                return int(obj)
-        return o
-
-    save_gltf(dict_strip(glTF.to_dict()), export_settings, gltf2_blender_json.BlenderJSONEncoder)
-        
-    #
-    
-    finish(export_settings)
-    
-    #
-
-    print_console('INFO', 'Finished glTF 2.0 export')
-    bpy.context.window_manager.progress_end()
-    print_newline()
-
+    if not export_settings['gltf_current_frame']:
+        bpy.context.scene.frame_set(original_frame)
     return {'FINISHED'}
+
+
+def __export(export_settings):
+    export_settings['gltf_channelcache'] = dict()
+    exporter = GlTF2Exporter(__get_copyright(export_settings))
+    __gather_gltf(exporter, export_settings)
+    buffer = __create_buffer(exporter, export_settings)
+    exporter.finalize_images(export_settings[gltf2_blender_export_keys.FILE_DIRECTORY])
+    json = __fix_json(exporter.glTF.to_dict())
+
+    return json, buffer
+
+
+def __get_copyright(export_settings):
+    if export_settings[gltf2_blender_export_keys.COPYRIGHT]:
+        return export_settings[gltf2_blender_export_keys.COPYRIGHT]
+    return None
+
+
+def __gather_gltf(exporter, export_settings):
+    scenes, animations = gltf2_blender_gather.gather_gltf2(export_settings)
+
+    if export_settings['gltf_draco_mesh_compression']:
+        gltf2_io_draco_compression_extension.compress_scene_primitives(scenes, export_settings)
+        exporter.add_draco_extension()
+
+    for scene in scenes:
+        exporter.add_scene(scene)
+    for animation in animations:
+        exporter.add_animation(animation)
+
+
+def __create_buffer(exporter, export_settings):
+    buffer = bytes()
+    if export_settings[gltf2_blender_export_keys.FORMAT] == 'GLB':
+        buffer = exporter.finalize_buffer(export_settings[gltf2_blender_export_keys.FILE_DIRECTORY], is_glb=True)
+    else:
+        if export_settings[gltf2_blender_export_keys.FORMAT] == 'GLTF_EMBEDDED':
+            exporter.finalize_buffer(export_settings[gltf2_blender_export_keys.FILE_DIRECTORY])
+        else:
+            exporter.finalize_buffer(export_settings[gltf2_blender_export_keys.FILE_DIRECTORY],
+                                     export_settings[gltf2_blender_export_keys.BINARY_FILENAME])
+
+    return buffer
+
+
+def __fix_json(obj):
+    # TODO: move to custom JSON encoder
+    fixed = obj
+    if isinstance(obj, dict):
+        fixed = {}
+        for key, value in obj.items():
+            if not __should_include_json_value(key, value):
+                continue
+            fixed[key] = __fix_json(value)
+    elif isinstance(obj, list):
+        fixed = []
+        for value in obj:
+            fixed.append(__fix_json(value))
+    elif isinstance(obj, float):
+        # force floats to int, if they are integers (prevent INTEGER_WRITTEN_AS_FLOAT validator warnings)
+        if int(obj) == obj:
+            return int(obj)
+    return fixed
+
+
+def __should_include_json_value(key, value):
+    allowed_empty_collections = ["KHR_materials_unlit"]
+
+    if value is None:
+        return False
+    elif __is_empty_collection(value) and key not in allowed_empty_collections:
+        return False
+    return True
+
+
+def __is_empty_collection(value):
+    return (isinstance(value, dict) or isinstance(value, list)) and len(value) == 0
+
+
+def __write_file(json, buffer, export_settings):
+    try:
+        gltf2_io_export.save_gltf(
+            json,
+            export_settings,
+            gltf2_blender_json.BlenderJSONEncoder,
+            buffer)
+    except AssertionError as e:
+        _, _, tb = sys.exc_info()
+        traceback.print_tb(tb)  # Fixed format
+        tb_info = traceback.extract_tb(tb)
+        for tbi in tb_info:
+            filename, line, func, text = tbi
+            print_console('ERROR', 'An error occurred on line {} in statement {}'.format(line, text))
+        print_console('ERROR', str(e))
+        raise e
+
+
+def __notify_start(context):
+    print_console('INFO', 'Starting glTF 2.0 export')
+    context.window_manager.progress_begin(0, 100)
+    context.window_manager.progress_update(0)
+
+
+def __notify_end(context, elapsed):
+    print_console('INFO', 'Finished glTF 2.0 export in {} s'.format(elapsed))
+    context.window_manager.progress_end()
+    print_newline()

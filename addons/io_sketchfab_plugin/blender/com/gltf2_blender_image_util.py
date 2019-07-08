@@ -3,7 +3,7 @@ import shutil
 import bpy
 import zlib
 import struct
-from io_scene_gltf2.blender.exp import gltf2_blender_get
+from ..exp import gltf2_blender_get
 
 def create_image_file(context, blender_image, dst_path, file_format):
     """
